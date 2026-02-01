@@ -37,8 +37,8 @@ lac -t path/to/project --execute
 ## What gets removed
 
 - Files with extensions: `aux`, `bbl`, `log`, `out`, `toc`, `lof`, `lot`, `fls`, `fdb_latexmk`, `blg`, `bcf`.
-- Files whose names end with: `.run.xml`.
-- Files whose names contain: `.synctex`.
+- Files whose names end with: `.run.xml` or `-SAVE-ERROR`.
+
 - Directories whose names start with `_minted`.
 
 ## Behavior and safety
