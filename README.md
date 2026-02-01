@@ -31,7 +31,7 @@ lac -t path/to/project --execute
 ### Flags
 
 - `-t, --target <DIR>`: directory to inspect (default: `.`).
-- `-r, --recursive`: recursion is currently always enabled (flag does not disable traversal).
+- `-r, --recursive`: recursively traverse subdirectories (default: on); set to `false` to scan only the target directory.
 - `-e, --execute`: perform deletions; when omitted, actions are printed as "Would remove...".
 
 ## What gets removed
@@ -44,6 +44,6 @@ lac -t path/to/project --execute
 ## Behavior and safety
 
 - **Dry-run by default**: without `--execute`, no files are deleted; intended to review actions first.
-- Recursion is always enabled; the entire subtree under the target is scanned.
-- Output shows full paths for transparency.
-- The tool uses standard filesystem operations; ensure you have appropriate permissions before running with `--execute`.
+- Recursion is controlled by `--recursive` (default: true); set `false` to limit scanning to the target directory.
+- Symlinks are skipped to avoid deleting outside targets.
+- Deletion is pattern-based; review dry-run output carefully before rerunning with `--execute`.

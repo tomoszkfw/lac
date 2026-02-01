@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, builder::BoolishValueParser};
 use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;
@@ -11,8 +11,8 @@ struct Options {
     #[arg(short, long, default_value = ".")]
     target: String,
 
-    /// Disable if you want to delete only files in the target directory
-    #[arg(short, long, default_value_t = true)]
+    /// Recursively process subdirectories (default: true). When false, only process files in the target directory itself.
+    #[arg(short, long, default_value_t = true, action = clap::ArgAction::Set, value_parser = BoolishValueParser::new())]
     recursive: bool,
 
     /// Enable if you want to delete files
@@ -21,10 +21,7 @@ struct Options {
 }
 
 // constants for matching
-const SUFFIX_MATCH: &[&str] = &[".run.xml"];
-
-const CONTAINS_MATCH: &[&str] = &[".synctex"];
-
+const SUFFIX_MATCH: &[&str] = &[".run.xml", "-SAVE-ERROR"];
 const EXT_MATCH: &[&str] = &[
     "aux",
     "bbl",
@@ -49,10 +46,6 @@ fn is_latex_aux(path: &Path) -> bool {
         return true;
     }
 
-    if CONTAINS_MATCH.iter().any(|s| name.contains(s)) {
-        return true;
-    }
-
     let ext = match path.extension().and_then(|s| s.to_str()) {
         Some(e) => e,
         None => return false,
@@ -63,18 +56,43 @@ fn is_latex_aux(path: &Path) -> bool {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = Options::parse();
+    let target_path = Path::new(&options.target);
 
-    let walker = if options.recursive {
-        WalkDir::new(&options.target)
+    if !target_path.exists() {
+        return Err(format!("Target path '{}' does not exist", options.target).into());
+    }
+
+    if !target_path.is_dir() {
+        return Err(format!("Target path '{}' is not a directory", options.target).into());
+    }
+
+    if options.execute {
+        println!("Executing deletions (symlinks are skipped). Review targets carefully.");
     } else {
-        WalkDir::new(&options.target).max_depth(1)
+        println!(
+            "Dry-run mode: no deletions will be performed. Symlinks are skipped; review output before rerunning with --execute."
+        );
+    }
+
+    let mut walker = if options.recursive {
+        WalkDir::new(target_path).follow_links(false).into_iter()
+    } else {
+        WalkDir::new(target_path)
+            .max_depth(1)
+            .follow_links(false)
+            .into_iter()
     };
 
-    for entry in walker {
-        let entry = entry?;
+    while let Some(entry_result) = walker.next() {
+        let entry = entry_result?;
         let path = entry.path();
+        let file_type = entry.file_type();
 
-        if path.is_dir() {
+        if file_type.is_symlink() {
+            continue;
+        }
+
+        if file_type.is_dir() {
             if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
                 if name.starts_with("_minted") {
                     if options.execute {
@@ -83,11 +101,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         println!("Would remove directory: {}", path.display());
                     }
+                    walker.skip_current_dir();
+                    continue;
                 }
             }
-        }
-
-        if path.is_file() && is_latex_aux(path) {
+        } else if file_type.is_file() && is_latex_aux(path) {
             if options.execute {
                 fs::remove_file(path)?;
                 println!("Removed: {}", path.display());
