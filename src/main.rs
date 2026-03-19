@@ -96,17 +96,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if file_type.is_dir() {
-            if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                if name.starts_with("_minted") {
-                    if options.execute {
-                        fs::remove_dir_all(path)?;
-                        println!("Removed directory: {}", path.display());
-                    } else {
-                        println!("Would remove directory: {}", path.display());
-                    }
-                    walker.skip_current_dir();
-                    continue;
+            if let Some(name) = path.file_name().and_then(|s| s.to_str())
+                && name.starts_with("_minted")
+            {
+                if options.execute {
+                    fs::remove_dir_all(path)?;
+                    println!("Removed directory: {}", path.display());
+                } else {
+                    println!("Would remove directory: {}", path.display());
                 }
+                walker.skip_current_dir();
+                continue;
             }
         } else if file_type.is_file() && is_latex_aux(path) {
             if options.execute {
