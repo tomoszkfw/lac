@@ -8,11 +8,11 @@ pub struct Options {
     /// Target directory to clean auxiliary files from
     pub target_dir: Option<PathBuf>,
 
-    /// Recursively process subdirectories. When false, only process files in the target directory itself.
+    /// Enable recursive processing of subdirectories.
     #[arg(short, long, default_value_t = false)]
     pub recursive: bool,
 
-    /// Enable dry-run mode. When true, no files will be deleted.
+    /// Enable dry-run mode (i.e. no files will be deleted).
     #[arg(long, default_value_t = false)]
     pub dry_run: bool,
 }
