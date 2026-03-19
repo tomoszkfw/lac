@@ -8,8 +8,7 @@ use walkdir::WalkDir;
 #[command(version, about, long_about = None)]
 struct Options {
     /// Target directory to clean auxiliary files from
-    #[arg(short, long, default_value_os_t = env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))]
-    target: PathBuf,
+    target_dir: Option<PathBuf>,
 
     /// Recursively process subdirectories (default: true). When false, only process files in the target directory itself.
     #[arg(short, long, default_value_t = true, action = clap::ArgAction::Set, value_parser = BoolishValueParser::new())]
@@ -55,15 +54,19 @@ fn is_latex_aux(path: &Path) -> bool {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = env::args().collect();
+    dbg!(args);
     let options = Options::parse();
-    let target_path = Path::new(&options.target);
+    let target_path = options
+        .target_dir
+        .unwrap_or_else(|| env::current_dir().expect("Failed to get current directory"));
 
     if !target_path.exists() {
-        return Err(format!("Target path '{:#?}' does not exist", options.target).into());
+        return Err(format!("Target path '{:#?}' does not exist", target_path).into());
     }
 
     if !target_path.is_dir() {
-        return Err(format!("Target path '{:#?}' is not a directory", options.target).into());
+        return Err(format!("Target path '{:#?}' is not a directory", target_path).into());
     }
 
     if options.execute {
