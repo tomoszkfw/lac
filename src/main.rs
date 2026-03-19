@@ -1,4 +1,4 @@
-use clap::{Parser, builder::BoolishValueParser};
+use clap::Parser;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 use walkdir::WalkDir;
@@ -10,13 +10,13 @@ struct Options {
     /// Target directory to clean auxiliary files from
     target_dir: Option<PathBuf>,
 
-    /// Recursively process subdirectories (default: true). When false, only process files in the target directory itself.
-    #[arg(short, long, default_value_t = true, action = clap::ArgAction::Set, value_parser = BoolishValueParser::new())]
+    /// Recursively process subdirectories. When false, only process files in the target directory itself.
+    #[arg(short, long, default_value_t = false)]
     recursive: bool,
 
-    /// Enable if you want to delete files
-    #[arg(short, long, default_value_t = false)]
-    execute: bool,
+    /// Enable dry-run mode. When true, no files will be deleted.
+    #[arg(long, default_value_t = false)]
+    dry_run: bool,
 }
 
 // constants for matching
@@ -69,12 +69,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("Target path '{:#?}' is not a directory", target_path).into());
     }
 
-    if options.execute {
-        println!("Executing deletions (symlinks are skipped). Review targets carefully.");
-    } else {
-        println!(
-            "Dry-run mode: no deletions will be performed. Symlinks are skipped; review output before rerunning with --execute."
-        );
+    if options.dry_run {
+        println!("INFO: Running in dry-run mode. No files will be deleted.");
     }
 
     let mut walker = if options.recursive {
@@ -99,21 +95,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(name) = path.file_name().and_then(|s| s.to_str())
                 && name.starts_with("_minted")
             {
-                if options.execute {
+                if options.dry_run {
+                    println!("Would remove directory: {}", path.display());
+                } else {
                     fs::remove_dir_all(path)?;
                     println!("Removed directory: {}", path.display());
-                } else {
-                    println!("Would remove directory: {}", path.display());
                 }
                 walker.skip_current_dir();
                 continue;
             }
         } else if file_type.is_file() && is_latex_aux(path) {
-            if options.execute {
+            if options.dry_run {
+                println!("Would remove: {}", path.display());
+            } else {
                 fs::remove_file(path)?;
                 println!("Removed: {}", path.display());
-            } else {
-                println!("Would remove: {}", path.display());
             }
         }
     }
