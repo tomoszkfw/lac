@@ -1,3 +1,4 @@
+use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
@@ -53,18 +54,25 @@ fn is_latex_aux(path: &Path) -> bool {
     EXT_MATCH.contains(&ext)
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<()> {
     let options = Options::parse();
-    let target_path = options
-        .target_dir
-        .unwrap_or_else(|| env::current_dir().expect("Failed to get current directory"));
+    let target_path = match options.target_dir {
+        Some(path) => path,
+        None => env::current_dir().context("Failed to get current directory")?,
+    };
 
     if !target_path.exists() {
-        return Err(format!("Target path '{:#?}' does not exist", target_path).into());
+        return Err(anyhow!(
+            "Target path '{}' does not exist",
+            target_path.display()
+        ));
     }
 
     if !target_path.is_dir() {
-        return Err(format!("Target path '{:#?}' is not a directory", target_path).into());
+        return Err(anyhow!(
+            "Target path '{}' is not a directory",
+            target_path.display()
+        ));
     }
 
     if options.dry_run {
@@ -72,44 +80,88 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut walker = if options.recursive {
-        WalkDir::new(target_path).follow_links(false).into_iter()
+        WalkDir::new(&target_path).follow_links(false).into_iter()
     } else {
-        WalkDir::new(target_path)
+        WalkDir::new(&target_path)
             .max_depth(1)
             .follow_links(false)
             .into_iter()
     };
 
+    let mut scanned: usize = 0;
+    let mut matched: usize = 0;
+    let mut removed: usize = 0;
+    let mut failures: Vec<String> = Vec::new();
+
     while let Some(entry_result) = walker.next() {
-        let entry = entry_result?;
+        let entry = entry_result.context("Failed to read a directory entry while traversing")?;
         let path = entry.path();
         let file_type = entry.file_type();
+
+        scanned += 1;
 
         if file_type.is_symlink() {
             continue;
         }
 
         if file_type.is_dir() {
-            if let Some(name) = path.file_name().and_then(|s| s.to_str())
-                && name.starts_with("_minted")
-            {
+            if path.file_name().and_then(|s| s.to_str()) == Some("_minted") {
+                matched += 1;
                 if options.dry_run {
                     println!("Would remove directory: {}", path.display());
                 } else {
-                    fs::remove_dir_all(path)?;
-                    println!("Removed directory: {}", path.display());
+                    match fs::remove_dir_all(path) {
+                        Ok(()) => {
+                            removed += 1;
+                            println!("Removed directory: {}", path.display());
+                        }
+                        Err(err) => {
+                            failures.push(format!(
+                                "Failed to remove directory {}: {}",
+                                path.display(),
+                                err
+                            ));
+                        }
+                    }
                 }
                 walker.skip_current_dir();
                 continue;
             }
         } else if file_type.is_file() && is_latex_aux(path) {
+            matched += 1;
             if options.dry_run {
                 println!("Would remove: {}", path.display());
             } else {
-                fs::remove_file(path)?;
-                println!("Removed: {}", path.display());
+                match fs::remove_file(path) {
+                    Ok(()) => {
+                        removed += 1;
+                        println!("Removed: {}", path.display());
+                    }
+                    Err(err) => {
+                        failures.push(format!("Failed to remove file {}: {}", path.display(), err));
+                    }
+                }
             }
         }
+    }
+
+    println!(
+        "Summary: scanned={}, matched={}, removed={}, failed={}",
+        scanned,
+        matched,
+        removed,
+        failures.len()
+    );
+
+    if !failures.is_empty() {
+        eprintln!("Encountered {} failure(s):", failures.len());
+        for failure in &failures {
+            eprintln!("  - {}", failure);
+        }
+        return Err(anyhow!(
+            "Cleanup completed with {} failure(s)",
+            failures.len()
+        ));
     }
 
     Ok(())

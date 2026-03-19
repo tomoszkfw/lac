@@ -48,3 +48,6 @@ lac path/to/project -r
 - Symlinks are skipped to avoid deleting outside targets.
 - In dry-run mode, actions are printed as "Would remove..." and "Would remove directory...".
 - In execution mode, actions are printed as "Removed..." and "Removed directory...".
+- On deletion failures, processing continues for remaining matches and failures are summarized at the end.
+- A final summary line is always printed: `Summary: scanned=..., matched=..., removed=..., failed=...`.
+- Exit code is non-zero when one or more deletion failures occur.
