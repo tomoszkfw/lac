@@ -54,8 +54,6 @@ fn is_latex_aux(path: &Path) -> bool {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<String> = env::args().collect();
-    dbg!(args);
     let options = Options::parse();
     let target_path = options
         .target_dir
