@@ -1,6 +1,6 @@
 # lac — LaTeX auxiliary cleaner
 
-`lac` is a small command-line utility to list or remove LaTeX auxiliary artifacts (e.g., `.aux`, `.log`, `.out`) from a target directory. It supports a safe dry-run by default, optional recursion, and removes `_minted*` directories produced by minted.
+`lac` is a small command-line utility to remove LaTeX auxiliary artifacts (e.g., `.aux`, `.log`, `.out`) from a target directory. It supports optional dry-run mode, optional recursion, and removes `_minted*` directories produced by minted.
 
 ## Installation
 
@@ -15,24 +15,24 @@
 # show help
 lac --help
 
-# dry-run (default) on current directory, recursive
+# delete matches in current directory (non-recursive by default)
 lac
 
-# dry-run on a specific directory, recursive
-lac -t path/to/project
+# preview matches in current directory (non-recursive)
+lac --dry-run
 
-# actually delete matches, recursive
-lac --execute
+# preview matches in a specific directory, recursively
+lac path/to/project -r --dry-run
 
-# actually delete matches on a specific directory, recursive
-lac -t path/to/project --execute
+# delete matches in a specific directory, recursively
+lac path/to/project -r
 ```
 
-### Flags
+### Arguments and flags
 
-- `-t, --target <DIR>`: directory to inspect (default: `.`).
-- `-r, --recursive`: recursively traverse subdirectories (default: on); set to `false` to scan only the target directory.
-- `-e, --execute`: perform deletions; when omitted, actions are printed as "Would remove...".
+- `<TARGET_DIR>`: optional target directory (default: current directory).
+- `-r, --recursive`: recursively traverse subdirectories (default: off).
+- `--dry-run`: print actions without deleting files/directories.
 
 ## What gets removed
 
@@ -43,7 +43,8 @@ lac -t path/to/project --execute
 
 ## Behavior and safety
 
-- **Dry-run by default**: without `--execute`, no files are deleted; intended to review actions first.
-- Recursion is controlled by `--recursive` (default: true); set `false` to limit scanning to the target directory.
+- Deletes by default; use `--dry-run` to preview actions first.
+- Recursion is off by default; use `-r`/`--recursive` to include subdirectories.
 - Symlinks are skipped to avoid deleting outside targets.
-- Deletion is pattern-based; review dry-run output carefully before rerunning with `--execute`.
+- In dry-run mode, actions are printed as "Would remove..." and "Would remove directory...".
+- In execution mode, actions are printed as "Removed..." and "Removed directory...".
