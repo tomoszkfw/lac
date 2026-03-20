@@ -1,53 +1,127 @@
 # lac — LaTeX auxiliary cleaner
 
-`lac` is a small command-line utility to remove LaTeX auxiliary artifacts (e.g., `.aux`, `.log`, `.out`) from a target directory. It supports optional dry-run mode, optional recursion, and removes `_minted*` directories produced by minted.
+`lac` is a small command-line tool that cleans LaTeX auxiliary artifacts from a directory.
+
+It can:
+
+- remove known LaTeX aux files
+- remove directories named `_minted`
+- run non-recursively (default) or recursively (`-r`)
+- preview actions without deleting anything (`--dry-run`)
 
 ## Installation
 
-- Prerequisite: Rust toolchain (edition 2024 compatible).
-- From this repository:
-  - `cargo install --path .` to install into Cargo's bin dir, **or**
-  - `cargo build --release` and then copy `target/release/lac` wherever you like.
+Prerequisite: Rust toolchain.
+
+From the repository root:
+
+```sh
+cargo install --path .
+```
+
+Or build a release binary:
+
+```sh
+cargo build --release
+```
+
+Binary path:
+
+`target/release/lac`
 
 ## Usage
 
-```shell
-# show help
-lac --help
+```sh
+lac [TARGET_DIR] [OPTIONS]
+```
 
-# delete matches in current directory (non-recursive by default)
+### Arguments
+
+- `TARGET_DIR` (optional): directory to clean  
+  - default: current working directory
+
+### Options
+
+- `-r, --recursive`  
+  Traverse subdirectories recursively.
+- `--dry-run`  
+  Show what would be removed, without deleting.
+- `-h, --help`  
+  Show help.
+- `-V, --version`  
+  Show version.
+
+## Examples
+
+Clean current directory (non-recursive):
+
+```sh
 lac
+```
 
-# preview matches in current directory (non-recursive)
+Preview current directory cleanup (non-recursive):
+
+```sh
 lac --dry-run
+```
 
-# preview matches in a specific directory, recursively
+
+Recursively preview cleanup in a specific directory:
+
+```sh
 lac path/to/project -r --dry-run
+```
 
-# delete matches in a specific directory, recursively
+Recursively clean a specific directory:
+
+```sh
 lac path/to/project -r
 ```
 
-### Arguments and flags
-
-- `<TARGET_DIR>`: optional target directory (default: current directory).
-- `-r, --recursive`: recursively traverse subdirectories (default: off).
-- `--dry-run`: print actions without deleting files/directories.
-
 ## What gets removed
 
-- Files with extensions: `aux`, `bbl`, `log`, `out`, `toc`, `lof`, `lot`, `fls`, `fdb_latexmk`, `blg`, `bcf`.
-- Files whose names end with: `.run.xml` or `-SAVE-ERROR`.
+### Files
 
-- Directories whose names start with `_minted`.
+A file is removed if either condition matches:
 
-## Behavior and safety
+1. Its filename ends with one of:
+   - `.run.xml`
+   - `-SAVE-ERROR`
 
-- Deletes by default; use `--dry-run` to preview actions first.
-- Recursion is off by default; use `-r`/`--recursive` to include subdirectories.
-- Symlinks are skipped to avoid deleting outside targets.
-- In dry-run mode, actions are printed as "Would remove..." and "Would remove directory...".
-- In execution mode, actions are printed as "Removed..." and "Removed directory...".
-- On deletion failures, processing continues for remaining matches and failures are summarized at the end.
-- A final summary line is always printed: `Summary: scanned=..., matched=..., removed=..., failed=...`.
-- Exit code is non-zero when one or more deletion failures occur.
+2. Its extension is one of:
+   - `aux`
+   - `bbl`
+   - `bcf`
+   - `blg`
+   - `fdb_latexmk`
+   - `fls`
+   - `lof`
+   - `log`
+   - `lot`
+   - `nav`
+   - `out`
+   - `snm`
+   - `synctex(busy)`
+   - `toc`
+   - `vrb`
+
+### Directories
+
+- Any directory whose name is exactly `_minted` is removed.
+- Once matched, that directory is deleted as a whole and not traversed further.
+
+## Runtime behavior
+
+- If `TARGET_DIR` does not exist or is not a directory, the command exits with an error.
+- Symbolic links are not followed during traversal.
+- In `--dry-run` mode, output uses:
+  - `Would remove: ...`
+  - `Would remove directory: ...`
+- In normal mode, output uses:
+  - `Removed: ...`
+  - `Removed directory: ...`
+- A summary is always printed:
+
+`Summary: Scanned <N> files, and found <M> files matched. Removed <R> files.`
+
+- If some removals fail, failures are listed at the end and the process exits non-zero.
