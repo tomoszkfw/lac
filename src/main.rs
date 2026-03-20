@@ -1,61 +1,19 @@
 mod cli;
+mod matcher;
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
-use std::path::Path;
 use std::{env, fs};
 use walkdir::WalkDir;
 
-// constants for matching
-const SUFFIX_MATCH: &[&str] = &[".run.xml", "-SAVE-ERROR"];
-const EXT_MATCH: &[&str] = &[
-    "aux",
-    "bbl",
-    "log",
-    "out",
-    "toc",
-    "lof",
-    "lot",
-    "fls",
-    "fdb_latexmk",
-    "blg",
-    "bcf",
-];
-
-fn is_latex_aux(path: &Path) -> bool {
-    let name = match path.file_name().and_then(|s| s.to_str()) {
-        Some(n) => n,
-        None => return false,
-    };
-
-    if SUFFIX_MATCH.iter().any(|s| name.ends_with(s)) {
-        return true;
-    }
-
-    let ext = match path.extension().and_then(|s| s.to_str()) {
-        Some(e) => e,
-        None => return false,
-    };
-
-    EXT_MATCH.contains(&ext)
-}
-
 fn main() -> Result<()> {
     let options = cli::Options::parse();
-    let target_path = match options.target_dir {
-        Some(path) => path,
-        None => env::current_dir().context("Failed to get current directory")?,
-    };
+    let target_path = options
+        .target_dir
+        .unwrap_or(env::current_dir().context("Failed to get current working directory")?);
 
-    if !target_path.exists() {
+    if !target_path.exists() || !target_path.is_dir() {
         return Err(anyhow!(
-            "Target path '{}' does not exist",
-            target_path.display()
-        ));
-    }
-
-    if !target_path.is_dir() {
-        return Err(anyhow!(
-            "Target path '{}' is not a directory",
+            "ERROR: Target path '{}' does not exist or is not a directory.",
             target_path.display()
         ));
     }
@@ -65,13 +23,12 @@ fn main() -> Result<()> {
     }
 
     let mut walker = if options.recursive {
-        WalkDir::new(&target_path).follow_links(false).into_iter()
-    } else {
         WalkDir::new(&target_path)
-            .max_depth(1)
-            .follow_links(false)
-            .into_iter()
-    };
+    } else {
+        WalkDir::new(&target_path).max_depth(1)
+    }
+    .follow_links(false)
+    .into_iter();
 
     let mut scanned: usize = 0;
     let mut matched: usize = 0;
@@ -84,10 +41,6 @@ fn main() -> Result<()> {
         let file_type = entry.file_type();
 
         scanned += 1;
-
-        if file_type.is_symlink() {
-            continue;
-        }
 
         if file_type.is_dir() {
             if path.file_name().and_then(|s| s.to_str()) == Some("_minted") {
@@ -112,7 +65,7 @@ fn main() -> Result<()> {
                 walker.skip_current_dir();
                 continue;
             }
-        } else if file_type.is_file() && is_latex_aux(path) {
+        } else if file_type.is_file() && matcher::is_latex_aux(path) {
             matched += 1;
             if options.dry_run {
                 println!("Would remove: {}", path.display());
@@ -131,15 +84,12 @@ fn main() -> Result<()> {
     }
 
     println!(
-        "Summary: scanned={}, matched={}, removed={}, failed={}",
-        scanned,
-        matched,
-        removed,
-        failures.len()
+        "Summary: Scanned {} files, and found {} files matched. Removed {} files.",
+        scanned, matched, removed
     );
 
     if !failures.is_empty() {
-        eprintln!("Encountered {} failure(s):", failures.len());
+        eprintln!("Summary: Encountered {} failure(s):", failures.len());
         for failure in &failures {
             eprintln!("  - {}", failure);
         }
