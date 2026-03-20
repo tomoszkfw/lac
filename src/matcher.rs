@@ -32,5 +32,5 @@ pub fn is_latex_aux(path: &Path) -> bool {
 
     path.extension()
         .and_then(|s| s.to_str())
-        .is_some_and(|ext| EXT_MATCH.binary_search(&ext).is_ok())
+        .is_some_and(|ext| EXT_MATCH.contains(&ext))
 }
