@@ -43,7 +43,9 @@ fn main() -> Result<()> {
         scanned += 1;
 
         if file_type.is_dir() {
-            if path.file_name().and_then(|s| s.to_str()) == Some("_minted") {
+            if let Some(file_name) = path.file_name().and_then(|s| s.to_str())
+                && file_name.starts_with("_minted")
+            {
                 matched += 1;
                 if options.dry_run {
                     println!("Would remove directory: {}", path.display());
