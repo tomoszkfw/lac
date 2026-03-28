@@ -36,16 +36,15 @@ fn main() -> Result<()> {
                 && file_name.starts_with("_minted")
             {
                 if options.dry_run {
-                    println!("Would remove directory: {}", path.display());
+                    println!("Would remove: {}", path.display());
                 } else {
                     match fs::remove_dir_all(path) {
                         Ok(()) => {
                             removed += 1;
-                            println!("Removed directory: {}", path.display());
                         }
                         Err(err) => {
                             failure += 1;
-                            eprintln!("Failed to remove directory {}: {}", path.display(), err);
+                            eprintln!("Failed to remove {}: {}", path.display(), err);
                         }
                     }
                 }
@@ -60,17 +59,20 @@ fn main() -> Result<()> {
                     }
                     Err(err) => {
                         failure += 1;
-                        eprintln!("Failed to remove file {}: {}", path.display(), err);
+                        eprintln!("Failed to remove {}: {}", path.display(), err);
                     }
                 }
             }
         }
     }
 
-    println!("Scanned {} files and Removed {} files.", scanned, removed);
+    println!(
+        "Scanned {} entries and Removed {} entries.",
+        scanned, removed
+    );
 
     if failure != 0 {
-        return Err(anyhow!("Cleanup completed with {} failure(s)", failure));
+        return Err(anyhow!("Cleanup completed with {} failures", failure));
     }
 
     Ok(())
