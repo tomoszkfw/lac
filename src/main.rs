@@ -1,28 +1,19 @@
 mod cli;
 mod matcher;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use clap::Parser;
-use std::{env, fs};
+use std::fs;
 use walkdir::WalkDir;
 
 fn main() -> Result<()> {
     let options = cli::Options::parse();
-    let target_path = options
-        .target_dir
-        .unwrap_or(env::current_dir().context("Failed to get current working directory")?);
-
-    if !target_path.exists() || !target_path.is_dir() {
-        return Err(anyhow!(
-            "ERROR: Target path '{}' does not exist or is not a directory.",
-            target_path.display()
-        ));
-    }
+    let target_path = cli::Options::get_target_path(&options)?;
 
     if options.dry_run {
-        println!("INFO: Running in dry-run mode. No files will be deleted.");
+        println!("Running in dry-run mode. No files will be deleted.");
     }
 
-    let mut walker = if options.recursive {
+    let walker = if options.recursive {
         WalkDir::new(&target_path)
     } else {
         WalkDir::new(&target_path).max_depth(1)
@@ -31,12 +22,10 @@ fn main() -> Result<()> {
     .into_iter();
 
     let mut scanned: usize = 0;
-    let mut matched: usize = 0;
     let mut removed: usize = 0;
-    let mut failures: Vec<String> = Vec::new();
+    let mut failure: usize = 0;
 
-    while let Some(entry_result) = walker.next() {
-        let entry = entry_result.context("Failed to read a directory entry while traversing")?;
+    for entry in walker.filter_map(|e| e.ok()) {
         let path = entry.path();
         let file_type = entry.file_type();
 
@@ -46,7 +35,6 @@ fn main() -> Result<()> {
             if let Some(file_name) = path.file_name().and_then(|s| s.to_str())
                 && file_name.starts_with("_minted")
             {
-                matched += 1;
                 if options.dry_run {
                     println!("Would remove directory: {}", path.display());
                 } else {
@@ -56,49 +44,33 @@ fn main() -> Result<()> {
                             println!("Removed directory: {}", path.display());
                         }
                         Err(err) => {
-                            failures.push(format!(
-                                "Failed to remove directory {}: {}",
-                                path.display(),
-                                err
-                            ));
+                            failure += 1;
+                            eprintln!("Failed to remove directory {}: {}", path.display(), err);
                         }
                     }
                 }
-                walker.skip_current_dir();
-                continue;
             }
         } else if file_type.is_file() && matcher::is_latex_aux(path) {
-            matched += 1;
             if options.dry_run {
                 println!("Would remove: {}", path.display());
             } else {
                 match fs::remove_file(path) {
                     Ok(()) => {
                         removed += 1;
-                        println!("Removed: {}", path.display());
                     }
                     Err(err) => {
-                        failures.push(format!("Failed to remove file {}: {}", path.display(), err));
+                        failure += 1;
+                        eprintln!("Failed to remove file {}: {}", path.display(), err);
                     }
                 }
             }
         }
     }
 
-    println!(
-        "Summary: Scanned {} files, and found {} files matched. Removed {} files.",
-        scanned, matched, removed
-    );
+    println!("Scanned {} files and Removed {} files.", scanned, removed);
 
-    if !failures.is_empty() {
-        eprintln!("Summary: Encountered {} failure(s):", failures.len());
-        for failure in &failures {
-            eprintln!("  - {}", failure);
-        }
-        return Err(anyhow!(
-            "Cleanup completed with {} failure(s)",
-            failures.len()
-        ));
+    if failure != 0 {
+        return Err(anyhow!("Cleanup completed with {} failure(s)", failure));
     }
 
     Ok(())
