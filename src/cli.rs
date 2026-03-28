@@ -37,7 +37,7 @@ impl Options {
 
         if !target_path.is_dir() {
             return Err(anyhow!(
-                "Specified target path '{}' does not exist or is not a directory.",
+                "Specified target path '{}' is not a directory.",
                 target_path.display()
             ));
         }
