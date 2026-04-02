@@ -1,49 +1,121 @@
-# lac — LaTeX auxiliary cleaner
+# lac
 
-`lac` is a small command-line utility to list or remove LaTeX auxiliary artifacts (e.g., `.aux`, `.log`, `.out`) from a target directory. It supports a safe dry-run by default, optional recursion, and removes `_minted*` directories produced by minted.
+`lac` is a small command-line utility that removes LaTeX auxiliary files from a project directory.
+
+## Features
+
+- Cleans common LaTeX build artifacts by extension and filename suffix.
+- Supports optional recursive cleanup.
+- Supports dry-run mode to preview deletions.
+- Removes `_minted*` directories (for the `minted` package cache).
 
 ## Installation
 
-- Prerequisite: Rust toolchain (edition 2024 compatible).
-- From this repository:
-  - `cargo install --path .` to install into Cargo's bin dir, **or**
-  - `cargo build --release` and then copy `target/release/lac` wherever you like.
+### Build from source
+
+```bash
+cargo build --release
+```
+
+Binary path:
+
+```text
+target/release/lac
+```
+
+### Install into Cargo bin directory
+
+```bash
+cargo install --path .
+```
 
 ## Usage
 
-```shell
-# show help
-lac --help
-
-# dry-run (default) on current directory, recursive
-lac
-
-# dry-run on a specific directory, recursive
-lac -t path/to/project
-
-# actually delete matches, recursive
-lac --execute
-
-# actually delete matches on a specific directory, recursive
-lac -t path/to/project --execute
+```bash
+lac [OPTIONS] [TARGET_DIR]
 ```
 
-### Flags
+- `TARGET_DIR`: directory to clean. If omitted, current working directory is used.
 
-- `-t, --target <DIR>`: directory to inspect (default: `.`).
-- `-r, --recursive`: recursively traverse subdirectories (default: on); set to `false` to scan only the target directory.
-- `-e, --execute`: perform deletions; when omitted, actions are printed as "Would remove...".
+### Options
 
-## What gets removed
+- `--recursive`: process subdirectories recursively.
+- `--dry-run`: print what would be removed without deleting anything.
+- `-h`, `--help`: print help.
+- `-V`, `--version`: print version.
 
-- Files with extensions: `aux`, `bbl`, `log`, `out`, `toc`, `lof`, `lot`, `fls`, `fdb_latexmk`, `blg`, `bcf`.
-- Files whose names end with: `.run.xml` or `-SAVE-ERROR`.
+### Examples
 
-- Directories whose names start with `_minted`.
+```bash
+# Clean current directory (non-recursive)
+lac
 
-## Behavior and safety
+# Clean a specific directory (non-recursive)
+lac ./paper
 
-- **Dry-run by default**: without `--execute`, no files are deleted; intended to review actions first.
-- Recursion is controlled by `--recursive` (default: true); set `false` to limit scanning to the target directory.
-- Symlinks are skipped to avoid deleting outside targets.
-- Deletion is pattern-based; review dry-run output carefully before rerunning with `--execute`.
+# Recursively clean a directory
+lac --recursive ./paper
+
+# Preview recursive cleanup without deleting files
+lac --dry-run --recursive ./paper
+```
+
+## What Gets Removed
+
+`lac` removes files that match either of the following:
+
+### Filename suffixes
+
+- `.run.xml`
+- `-SAVE-ERROR`
+
+### File extensions
+
+- `aux`
+- `bbl`
+- `bcf`
+- `blg`
+- `fdb_latexmk`
+- `fls`
+- `lof`
+- `log`
+- `lot`
+- `nav`
+- `out`
+- `snm`
+- `synctex(busy)`
+- `toc`
+- `vrb`
+
+Additionally, directories whose names start with `_minted` are removed with recursive directory deletion.
+
+## Behavior and Safety Notes
+
+- Default behavior is non-recursive.
+- Symbolic links are not followed during traversal.
+- In dry-run mode, paths are printed as `Would remove: ...` and no deletion happens.
+- Permission or deletion errors are reported to stderr, and processing continues.
+- The command prints a summary: `Scanned X entries and Removed Y entries.`
+- If one or more deletions fail, the process exits with an error.
+
+## Development
+
+### Run locally
+
+```bash
+cargo run -- --help
+cargo run -- --dry-run .
+```
+
+### Check and test
+
+```bash
+cargo check
+cargo test
+```
+
+Note: there is currently no formal test suite in this repository yet, so `cargo test` may run zero tests.
+
+## License
+
+No license file is currently included in this repository.

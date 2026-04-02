@@ -1,1 +1,5 @@
+# Build output and temporary files
 /target
+
+# MacOS specific files
+.DS_Store
