@@ -1,127 +1,121 @@
-# lac — LaTeX auxiliary cleaner
+# lac
 
-`lac` is a small command-line tool that cleans LaTeX auxiliary artifacts from a directory.
+`lac` is a small command-line utility that removes LaTeX auxiliary files from a project directory.
 
-It can:
+## Features
 
-- remove known LaTeX aux files
-- remove directories named `_minted`
-- run non-recursively (default) or recursively (`-r`)
-- preview actions without deleting anything (`--dry-run`)
+- Cleans common LaTeX build artifacts by extension and filename suffix.
+- Supports optional recursive cleanup.
+- Supports dry-run mode to preview deletions.
+- Removes `_minted*` directories (for the `minted` package cache).
 
 ## Installation
 
-Prerequisite: Rust toolchain.
+### Build from source
 
-From the repository root:
-
-```sh
-cargo install --path .
-```
-
-Or build a release binary:
-
-```sh
+```bash
 cargo build --release
 ```
 
 Binary path:
 
-`target/release/lac`
+```text
+target/release/lac
+```
+
+### Install into Cargo bin directory
+
+```bash
+cargo install --path .
+```
 
 ## Usage
 
-```sh
-lac [TARGET_DIR] [OPTIONS]
+```bash
+lac [OPTIONS] [TARGET_DIR]
 ```
 
-### Arguments
-
-- `TARGET_DIR` (optional): directory to clean  
-  - default: current working directory
+- `TARGET_DIR`: directory to clean. If omitted, current working directory is used.
 
 ### Options
 
-- `-r, --recursive`  
-  Traverse subdirectories recursively.
-- `--dry-run`  
-  Show what would be removed, without deleting.
-- `-h, --help`  
-  Show help.
-- `-V, --version`  
-  Show version.
+- `--recursive`: process subdirectories recursively.
+- `--dry-run`: print what would be removed without deleting anything.
+- `-h`, `--help`: print help.
+- `-V`, `--version`: print version.
 
-## Examples
+### Examples
 
-Clean current directory (non-recursive):
-
-```sh
+```bash
+# Clean current directory (non-recursive)
 lac
+
+# Clean a specific directory (non-recursive)
+lac ./paper
+
+# Recursively clean a directory
+lac --recursive ./paper
+
+# Preview recursive cleanup without deleting files
+lac --dry-run --recursive ./paper
 ```
 
-Preview current directory cleanup (non-recursive):
+## What Gets Removed
 
-```sh
-lac --dry-run
-```
+`lac` removes files that match either of the following:
 
+### Filename suffixes
 
-Recursively preview cleanup in a specific directory:
+- `.run.xml`
+- `-SAVE-ERROR`
 
-```sh
-lac path/to/project -r --dry-run
-```
+### File extensions
 
-Recursively clean a specific directory:
+- `aux`
+- `bbl`
+- `bcf`
+- `blg`
+- `fdb_latexmk`
+- `fls`
+- `lof`
+- `log`
+- `lot`
+- `nav`
+- `out`
+- `snm`
+- `synctex(busy)`
+- `toc`
+- `vrb`
 
-```sh
-lac path/to/project -r
-```
+Additionally, directories whose names start with `_minted` are removed with recursive directory deletion.
 
-## What gets removed
+## Behavior and Safety Notes
 
-### Files
-
-A file is removed if either condition matches:
-
-1. Its filename ends with one of:
-   - `.run.xml`
-   - `-SAVE-ERROR`
-
-2. Its extension is one of:
-   - `aux`
-   - `bbl`
-   - `bcf`
-   - `blg`
-   - `fdb_latexmk`
-   - `fls`
-   - `lof`
-   - `log`
-   - `lot`
-   - `nav`
-   - `out`
-   - `snm`
-   - `synctex(busy)`
-   - `toc`
-   - `vrb`
-
-### Directories
-
-- Any directory whose name is exactly `_minted` is removed.
-- Once matched, that directory is deleted as a whole and not traversed further.
-
-## Runtime behavior
-
-- If `TARGET_DIR` does not exist or is not a directory, the command exits with an error.
+- Default behavior is non-recursive.
 - Symbolic links are not followed during traversal.
-- In `--dry-run` mode, output uses:
-  - `Would remove: ...`
-  - `Would remove directory: ...`
-- In normal mode, output uses:
-  - `Removed: ...`
-  - `Removed directory: ...`
-- A summary is always printed:
+- In dry-run mode, paths are printed as `Would remove: ...` and no deletion happens.
+- Permission or deletion errors are reported to stderr, and processing continues.
+- The command prints a summary: `Scanned X entries and Removed Y entries.`
+- If one or more deletions fail, the process exits with an error.
 
-`Summary: Scanned <N> files, and found <M> files matched. Removed <R> files.`
+## Development
 
-- If some removals fail, failures are listed at the end and the process exits non-zero.
+### Run locally
+
+```bash
+cargo run -- --help
+cargo run -- --dry-run .
+```
+
+### Check and test
+
+```bash
+cargo check
+cargo test
+```
+
+Note: there is currently no formal test suite in this repository yet, so `cargo test` may run zero tests.
+
+## License
+
+No license file is currently included in this repository.
