@@ -13,7 +13,7 @@ fn main() -> Result<()> {
         println!("Running in dry-run mode. No files will be deleted.");
     }
 
-    let walker = if options.recursive {
+    let mut walker = if options.recursive {
         WalkDir::new(&target_path)
     } else {
         WalkDir::new(&target_path).max_depth(1)
@@ -25,7 +25,12 @@ fn main() -> Result<()> {
     let mut removed: usize = 0;
     let mut failure: usize = 0;
 
-    for entry in walker.filter_map(|e| e.ok()) {
+    while let Some(entry_result) = walker.next() {
+        let entry = match entry_result {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+
         let path = entry.path();
         let file_type = entry.file_type();
 
@@ -48,6 +53,9 @@ fn main() -> Result<()> {
                         }
                     }
                 }
+
+                walker.skip_current_dir();
+                continue;
             }
         } else if file_type.is_file() && matcher::is_latex_aux(path) {
             if options.dry_run {
