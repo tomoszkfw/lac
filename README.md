@@ -41,6 +41,7 @@ lac [OPTIONS] [TARGET_DIR]
 
 - `--recursive`: process subdirectories recursively.
 - `--dry-run`: print what would be removed without deleting anything.
+- `-v`, `--verbose`: enable debug-level logging.
 - `-h`, `--help`: print help.
 - `-V`, `--version`: print version.
 
@@ -92,10 +93,13 @@ Additionally, directories whose names start with `_minted` are removed with recu
 ## Behavior and Safety Notes
 
 - Default behavior is non-recursive.
+- Recursive cleanup respects standard ignore files such as `.gitignore`, `.ignore`, and `.git/info/exclude`.
+- Recursive cleanup uses parallel directory traversal, so removal logs may appear in a different order between runs.
+- Logs are emitted through the standard Rust logging pipeline. By default, info-level messages and errors are shown; `--verbose` enables debug output.
 - Symbolic links are not followed during traversal.
-- In dry-run mode, paths are printed as `Would remove: ...` and no deletion happens.
+- In dry-run mode, paths are printed as `Would remove file: ...` or `Would remove directory: ...` and no deletion happens.
 - Permission or deletion errors are reported to stderr, and processing continues.
-- The command prints a summary: `Scanned X entries and Removed Y entries.`
+- The command prints a summary: `Scanned X entries and removed Y entries.`
 - If one or more deletions fail, the process exits with an error.
 
 ## Development
@@ -110,6 +114,8 @@ cargo run -- --dry-run .
 ### Check and test
 
 ```bash
+cargo fmt
+cargo clippy
 cargo check
 cargo test
 ```

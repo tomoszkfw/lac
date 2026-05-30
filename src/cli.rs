@@ -17,16 +17,19 @@ pub struct Options {
     /// Enable dry-run mode (i.e. no files will be deleted).
     #[arg(long, default_value_t = false)]
     pub dry_run: bool,
+
+    /// Enable verbose logging.
+    #[arg(short, long, default_value_t = false)]
+    pub verbose: bool,
 }
 
 impl Options {
     /// Utility function to handle `option.target_dir`
     pub fn get_target_path(&self) -> Result<PathBuf> {
-        // extract target directory (defaulting to current directory)
-        let target_path = self
-            .target_dir
-            .clone()
-            .unwrap_or(env::current_dir().context("Failed to get current working directory")?);
+        let target_path = match &self.target_dir {
+            Some(target_dir) => target_dir.clone(),
+            None => env::current_dir().context("Failed to get current working directory")?,
+        };
 
         if !target_path.exists() {
             return Err(anyhow!(
