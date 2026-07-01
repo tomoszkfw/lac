@@ -21,6 +21,10 @@ pub struct Options {
     /// Enable verbose logging.
     #[arg(short, long, default_value_t = false)]
     pub verbose: bool,
+
+    /// Enable ignoring .gitignore and other ignore files.
+    #[arg(long, default_value_t = false)]
+    pub no_ignore: bool,
 }
 
 impl Options {

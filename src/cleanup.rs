@@ -14,26 +14,29 @@ struct CleanupCounters {
     failures: AtomicUsize,
 }
 
-pub fn run(target_path: &Path, recursive: bool, dry_run: bool) -> Result<()> {
+pub fn run(target_path: &Path, recursive: bool, dry_run: bool, no_ignore: bool) -> Result<()> {
     let counters = Arc::new(CleanupCounters::default());
     let mut walker = WalkBuilder::new(target_path);
+
     walker.follow_links(false);
+
+    if no_ignore {
+        walker
+            .git_ignore(false)
+            .git_exclude(false)
+            .git_global(false)
+            .ignore(false)
+            .parents(false);
+    }
 
     if !recursive {
         walker.max_depth(Some(1));
     }
 
-    if recursive {
+    walker.build_parallel().run(|| {
         let counters = Arc::clone(&counters);
-        walker.build_parallel().run(move || {
-            let counters = Arc::clone(&counters);
-            Box::new(move |entry| process_entry(entry, dry_run, &counters))
-        });
-    } else {
-        for entry in walker.build() {
-            let _ = process_entry(entry, dry_run, &counters);
-        }
-    }
+        Box::new(move |entry| process_entry(entry, dry_run, &counters))
+    });
 
     let scanned = counters.scanned.load(Relaxed);
     let removed = counters.removed.load(Relaxed);
