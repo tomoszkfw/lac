@@ -35,16 +35,9 @@ impl Options {
             None => env::current_dir().context("Failed to get current working directory")?,
         };
 
-        if !target_path.exists() {
+        if !target_path.exists() || !target_path.is_dir() {
             return Err(anyhow!(
-                "Specified target path '{}' does not exist.",
-                target_path.display()
-            ));
-        }
-
-        if !target_path.is_dir() {
-            return Err(anyhow!(
-                "Specified target path '{}' is not a directory.",
+                "No such file or directory: '{}'",
                 target_path.display()
             ));
         }

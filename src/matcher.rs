@@ -1,51 +1,46 @@
-use std::fs;
-use std::path::Path;
-
-// constants for matching
-const SUFFIX_MATCH: [&str; 2] = [".run.xml", "-SAVE-ERROR"];
-const EXT_MATCH: [&str; 15] = [
-    "aux",
-    "bbl",
-    "bcf",
-    "blg",
-    "fdb_latexmk",
-    "fls",
-    "lof",
-    "log",
-    "lot",
-    "nav",
-    "out",
-    "snm",
-    "synctex(busy)",
-    "toc",
-    "vrb",
-];
+use TargetKind::*;
+use std::{ffi::OsString, fs::FileType, path::Path};
 
 pub enum TargetKind {
-    Directory,
-    File,
+    MintedDir,
+    TexSource(OsString),
+    AuxCandidate(OsString),
 }
 
-pub fn is_minted_dir_name(name: &str) -> bool {
-    name.starts_with("_minted")
-}
+pub fn classify(path: &Path, ft: Option<FileType>) -> Option<TargetKind> {
+    let name = path.file_name()?.to_str()?;
 
-pub fn is_latex_aux_name(name: &str, extension: Option<&str>) -> bool {
-    if SUFFIX_MATCH.iter().any(|suffix| name.ends_with(suffix)) {
-        return true;
+    if ft?.is_dir() {
+        return name.starts_with("_minted").then_some(MintedDir);
     }
 
-    extension.is_some_and(|ext| EXT_MATCH.contains(&ext))
-}
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        if ext == "tex" {
+            return Some(TexSource(path.file_stem()?.to_os_string()));
+        }
+        if matches!(
+            ext,
+            "aux"
+                | "bbl"
+                | "bcf"
+                | "blg"
+                | "fdb_latexmk"
+                | "fls"
+                | "lof"
+                | "log"
+                | "lot"
+                | "nav"
+                | "out"
+                | "snm"
+                | "synctex(busy)"
+                | "toc"
+                | "vrb"
+        ) {
+            return Some(AuxCandidate(path.file_stem()?.to_os_string()));
+        }
+    }
 
-pub fn classify(path: &Path, file_type: Option<fs::FileType>) -> Option<TargetKind> {
-    let ft = file_type?;
-    let name = path.file_name().and_then(|n| n.to_str())?;
-    if ft.is_dir() && is_minted_dir_name(name) {
-        return Some(TargetKind::Directory);
-    }
-    if ft.is_file() && is_latex_aux_name(name, path.extension().and_then(|e| e.to_str())) {
-        return Some(TargetKind::File);
-    }
-    None
+    name.strip_suffix(".run.xml")
+        .or_else(|| name.strip_suffix("-SAVE-ERROR"))
+        .map(|b| AuxCandidate(OsString::from(b)))
 }

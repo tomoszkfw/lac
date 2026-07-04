@@ -1,26 +1,45 @@
-use crate::matcher;
+use crate::matcher::{self, TargetKind::*};
 use anyhow::{Result, anyhow};
 use ignore::{WalkBuilder, WalkState};
 use log::{debug, error, info};
+use rayon::prelude::*;
+use std::collections::HashSet;
+use std::ffi::OsString;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+use std::sync::mpsc;
 
 #[derive(Default)]
-struct CleanupCounters {
+struct Counters {
     scanned: AtomicUsize,
     removed: AtomicUsize,
     failures: AtomicUsize,
 }
 
-pub fn run(target_path: &Path, recursive: bool, dry_run: bool, no_ignore: bool) -> Result<()> {
-    let counters = Arc::new(CleanupCounters::default());
-    let mut walker = WalkBuilder::new(target_path);
+#[derive(Default)]
+struct State {
+    tex: Vec<(PathBuf, OsString)>,
+    aux: Vec<(PathBuf, PathBuf, OsString)>,
+    dirs: Vec<PathBuf>,
+}
 
-    walker.follow_links(false);
+struct Worker(State, mpsc::Sender<State>, Arc<Counters>);
 
-    if no_ignore {
+impl Drop for Worker {
+    fn drop(&mut self) {
+        let _ = self.1.send(std::mem::take(&mut self.0));
+    }
+}
+
+pub fn run(target: &Path, rec: bool, dry: bool, no_ign: bool) -> Result<()> {
+    let counters = Arc::new(Counters::default());
+    let mut walker = WalkBuilder::new(target);
+    walker
+        .follow_links(false)
+        .max_depth(if rec { None } else { Some(1) });
+    if no_ign {
         walker
             .git_ignore(false)
             .git_exclude(false)
@@ -29,69 +48,81 @@ pub fn run(target_path: &Path, recursive: bool, dry_run: bool, no_ignore: bool) 
             .parents(false);
     }
 
-    if !recursive {
-        walker.max_depth(Some(1));
+    let (tx, rx) = mpsc::channel();
+    walker.build_parallel().run(|| {
+        let mut w = Worker(State::default(), tx.clone(), counters.clone());
+        Box::new(move |e| {
+            let Ok(e) = e else {
+                debug!("Skipping error");
+                return WalkState::Continue;
+            };
+            w.2.scanned.fetch_add(1, Relaxed);
+
+            let path = e.path();
+            if let Some(kind) = matcher::classify(path, e.file_type()) {
+                let parent = path.parent().unwrap_or(Path::new("")).to_path_buf();
+                return match kind {
+                    MintedDir => {
+                        w.0.dirs.push(path.to_path_buf());
+                        WalkState::Skip
+                    }
+                    TexSource(s) => {
+                        w.0.tex.push((parent, s));
+                        WalkState::Continue
+                    }
+                    AuxCandidate(s) => {
+                        w.0.aux.push((path.to_path_buf(), parent, s));
+                        WalkState::Continue
+                    }
+                };
+            }
+            WalkState::Continue
+        })
+    });
+    drop(tx);
+
+    let (mut tex_set, mut all_aux, mut targets) = (HashSet::new(), Vec::new(), Vec::new());
+    for mut s in rx {
+        tex_set.extend(s.tex);
+        all_aux.append(&mut s.aux);
+        targets.extend(s.dirs.into_iter().map(|p| (p, true)));
     }
 
-    walker.build_parallel().run(|| {
-        let counters = Arc::clone(&counters);
-        Box::new(move |entry| process_entry(entry, dry_run, &counters))
+    targets.par_extend(
+        all_aux.into_par_iter().filter_map(|(p, parent, stem)| {
+            tex_set.contains(&(parent, stem)).then_some((p, false))
+        }),
+    );
+
+    targets.into_par_iter().for_each(|(p, is_dir)| {
+        let kind = if is_dir { "directory" } else { "file" };
+        if dry {
+            info!("Would remove {kind}: {}", p.display());
+        } else {
+            match if is_dir {
+                fs::remove_dir_all(&p)
+            } else {
+                fs::remove_file(&p)
+            } {
+                Ok(_) => {
+                    counters.removed.fetch_add(1, Relaxed);
+                    info!("Removed {kind}: {}", p.display());
+                }
+                Err(e) => {
+                    counters.failures.fetch_add(1, Relaxed);
+                    error!("Failed to remove {kind}: {e}");
+                }
+            }
+        }
     });
 
-    let scanned = counters.scanned.load(Relaxed);
-    let removed = counters.removed.load(Relaxed);
-    let failures = counters.failures.load(Relaxed);
-    info!("Scanned {scanned} entries and removed {removed} entries.");
-
-    if failures != 0 {
-        return Err(anyhow!("Cleanup completed with {failures} failures"));
-    }
-    Ok(())
-}
-
-fn process_entry(
-    entry: Result<ignore::DirEntry, ignore::Error>,
-    dry_run: bool,
-    counters: &CleanupCounters,
-) -> WalkState {
-    let entry = match entry {
-        Ok(entry) => entry,
-        Err(err) => {
-            debug!("Skipping traversal error: {err}");
-            return WalkState::Continue;
-        }
-    };
-
-    counters.scanned.fetch_add(1, Relaxed);
-    let Some(kind) = matcher::classify(entry.path(), entry.file_type()) else {
-        return WalkState::Continue;
-    };
-
-    let is_dir = matches!(kind, matcher::TargetKind::Directory);
-    let kind = if is_dir { "directory" } else { "file" };
-    if dry_run {
-        info!("Would remove {kind}: {}", entry.path().display());
-    } else {
-        let result = if is_dir {
-            fs::remove_dir_all(entry.path())
-        } else {
-            fs::remove_file(entry.path())
-        };
-        match result {
-            Ok(()) => {
-                counters.removed.fetch_add(1, Relaxed);
-                info!("Removed {kind}: {}", entry.path().display());
-            }
-            Err(err) => {
-                counters.failures.fetch_add(1, Relaxed);
-                error!("Failed to remove {kind} {}: {err}", entry.path().display());
-            }
-        }
-    }
-
-    if is_dir {
-        WalkState::Skip
-    } else {
-        WalkState::Continue
-    }
+    let (s, r, f) = (
+        counters.scanned.load(Relaxed),
+        counters.removed.load(Relaxed),
+        counters.failures.load(Relaxed),
+    );
+    info!("Scanned {s} entries and removed {r} entries.");
+    (f == 0)
+        .then_some(())
+        .ok_or_else(|| anyhow!("Cleanup completed with {f} failures"))
 }
