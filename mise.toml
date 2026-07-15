@@ -1,0 +1,6 @@
+[tools]
+rust = "latest"
+
+[settings]
+lockfile = true
+minimum_release_age = "5d"
