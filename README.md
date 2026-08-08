@@ -92,6 +92,7 @@ Additionally, directories whose names start with `_minted` are removed with recu
 
 ## Behavior and Safety Notes
 
+- **Safety First:** Auxiliary files (like `.log`, `.aux`, etc.) are removed only if a `.tex` file with the exact same name exists in the same directory. This prevents accidental deletion of unrelated log files or build artifacts from other tools.
 - Default behavior is non-recursive.
 - Recursive cleanup respects standard ignore files such as `.gitignore`, `.ignore`, and `.git/info/exclude`.
 - Recursive cleanup uses parallel directory traversal, so removal logs may appear in a different order between runs.

@@ -31,15 +31,12 @@ impl Options {
     /// Utility function to handle `option.target_dir`
     pub fn get_target_path(&self) -> Result<PathBuf> {
         let target_path = match &self.target_dir {
-            Some(target_dir) => target_dir.clone(),
+            Some(target_dir) => target_dir.to_path_buf(),
             None => env::current_dir().context("Failed to get current working directory")?,
         };
 
-        if !target_path.exists() || !target_path.is_dir() {
-            return Err(anyhow!(
-                "No such file or directory: '{}'",
-                target_path.display()
-            ));
+        if !target_path.is_dir() {
+            return Err(anyhow!("No such directory: '{}'", target_path.display()));
         }
 
         Ok(target_path)

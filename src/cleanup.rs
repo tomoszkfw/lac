@@ -7,39 +7,60 @@ use std::collections::HashSet;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::sync::mpsc;
 
-#[derive(Default)]
-struct Counters {
-    scanned: AtomicUsize,
-    removed: AtomicUsize,
-    failures: AtomicUsize,
+pub enum DeletionTarget {
+    File(PathBuf),
+    Directory(PathBuf),
 }
 
-#[derive(Default)]
-struct State {
-    tex: Vec<(PathBuf, OsString)>,
-    aux: Vec<(PathBuf, PathBuf, OsString)>,
-    dirs: Vec<PathBuf>,
-}
-
-struct Worker(State, mpsc::Sender<State>, Arc<Counters>);
-
-impl Drop for Worker {
-    fn drop(&mut self) {
-        let _ = self.1.send(std::mem::take(&mut self.0));
+impl DeletionTarget {
+    fn path(&self) -> &Path {
+        match self {
+            Self::File(p) | Self::Directory(p) => p,
+        }
+    }
+    fn kind_str(&self) -> &'static str {
+        match self {
+            Self::File(_) => "file",
+            Self::Directory(_) => "directory",
+        }
     }
 }
 
-pub fn run(target: &Path, rec: bool, dry: bool, no_ign: bool) -> Result<()> {
-    let counters = Arc::new(Counters::default());
+#[derive(Default)]
+struct ThreadLocalState {
+    tex_sources: Vec<(PathBuf, OsString)>,
+    aux_candidates: Vec<(PathBuf, PathBuf, OsString)>,
+    minted_dirs: Vec<PathBuf>,
+    scanned_count: usize,
+}
+
+struct Worker {
+    state: ThreadLocalState,
+    sender: mpsc::Sender<ThreadLocalState>,
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        let _ = self.sender.send(std::mem::take(&mut self.state));
+    }
+}
+
+struct DiscoveryResult {
+    tex_sources: HashSet<(PathBuf, OsString)>,
+    aux_candidates: Vec<(PathBuf, PathBuf, OsString)>,
+    minted_dirs: Vec<PathBuf>,
+    scanned_count: usize,
+}
+
+fn discover_candidates(target: &Path, recursive: bool, no_ignore: bool) -> Result<DiscoveryResult> {
     let mut walker = WalkBuilder::new(target);
     walker
         .follow_links(false)
-        .max_depth(if rec { None } else { Some(1) });
-    if no_ign {
+        .max_depth(if recursive { None } else { Some(1) });
+
+    if no_ignore {
         walker
             .git_ignore(false)
             .git_exclude(false)
@@ -48,81 +69,131 @@ pub fn run(target: &Path, rec: bool, dry: bool, no_ign: bool) -> Result<()> {
             .parents(false);
     }
 
-    let (tx, rx) = mpsc::channel();
+    let (sender, receiver) = mpsc::channel();
+
     walker.build_parallel().run(|| {
-        let mut w = Worker(State::default(), tx.clone(), counters.clone());
-        Box::new(move |e| {
-            let Ok(e) = e else {
+        let mut worker = Worker {
+            state: ThreadLocalState::default(),
+            sender: sender.clone(),
+        };
+
+        Box::new(move |entry| {
+            let Ok(dir_entry) = entry else {
                 debug!("Skipping error");
                 return WalkState::Continue;
             };
-            w.2.scanned.fetch_add(1, Relaxed);
 
-            let path = e.path();
-            if let Some(kind) = matcher::classify(path, e.file_type()) {
+            worker.state.scanned_count += 1;
+            let path = dir_entry.path();
+
+            if let Some(kind) = matcher::classify(path, dir_entry.file_type()) {
                 let parent = path.parent().unwrap_or(Path::new("")).to_path_buf();
-                return match kind {
+                match kind {
                     MintedDir => {
-                        w.0.dirs.push(path.to_path_buf());
-                        WalkState::Skip
+                        worker.state.minted_dirs.push(path.to_path_buf());
+                        return WalkState::Skip;
                     }
-                    TexSource(s) => {
-                        w.0.tex.push((parent, s));
-                        WalkState::Continue
-                    }
+                    TexSource(s) => worker.state.tex_sources.push((parent, s)),
                     AuxCandidate(s) => {
-                        w.0.aux.push((path.to_path_buf(), parent, s));
-                        WalkState::Continue
+                        worker
+                            .state
+                            .aux_candidates
+                            .push((path.to_path_buf(), parent, s))
                     }
-                };
+                }
             }
             WalkState::Continue
         })
     });
-    drop(tx);
+    drop(sender);
 
-    let (mut tex_set, mut all_aux, mut targets) = (HashSet::new(), Vec::new(), Vec::new());
-    for mut s in rx {
-        tex_set.extend(s.tex);
-        all_aux.append(&mut s.aux);
-        targets.extend(s.dirs.into_iter().map(|p| (p, true)));
+    let (mut tex_sources, mut aux_candidates, mut minted_dirs, mut scanned_count) =
+        (HashSet::new(), Vec::new(), Vec::new(), 0);
+
+    for mut state in receiver {
+        tex_sources.extend(state.tex_sources);
+        aux_candidates.append(&mut state.aux_candidates);
+        minted_dirs.append(&mut state.minted_dirs);
+        scanned_count += state.scanned_count;
     }
 
-    targets.par_extend(
-        all_aux.into_par_iter().filter_map(|(p, parent, stem)| {
-            tex_set.contains(&(parent, stem)).then_some((p, false))
-        }),
-    );
+    Ok(DiscoveryResult {
+        tex_sources,
+        aux_candidates,
+        minted_dirs,
+        scanned_count,
+    })
+}
 
-    targets.into_par_iter().for_each(|(p, is_dir)| {
-        let kind = if is_dir { "directory" } else { "file" };
-        if dry {
-            info!("Would remove {kind}: {}", p.display());
-        } else {
-            match if is_dir {
-                fs::remove_dir_all(&p)
-            } else {
-                fs::remove_file(&p)
-            } {
-                Ok(_) => {
-                    counters.removed.fetch_add(1, Relaxed);
-                    info!("Removed {kind}: {}", p.display());
-                }
-                Err(e) => {
-                    counters.failures.fetch_add(1, Relaxed);
-                    error!("Failed to remove {kind}: {e}");
-                }
+fn filter_targets(discovery: DiscoveryResult) -> Vec<DeletionTarget> {
+    let mut targets: Vec<DeletionTarget> = discovery
+        .minted_dirs
+        .into_iter()
+        .map(DeletionTarget::Directory)
+        .collect();
+
+    targets.par_extend(discovery.aux_candidates.into_par_iter().filter_map(
+        |(path, parent, stem)| {
+            discovery
+                .tex_sources
+                .contains(&(parent, stem))
+                .then_some(DeletionTarget::File(path))
+        },
+    ));
+
+    targets
+}
+
+struct ExecutionResult {
+    removed: usize,
+    failures: usize,
+}
+
+fn execute_deletion(targets: Vec<DeletionTarget>, dry_run: bool) -> ExecutionResult {
+    let (removed, failures) = targets
+        .into_par_iter()
+        .map(|target| {
+            let (path, kind_str) = (target.path(), target.kind_str());
+
+            if dry_run {
+                info!("Would remove {}: {}", kind_str, path.display());
+                return (0, 0);
             }
-        }
-    });
 
-    let (s, r, f) = (
-        counters.scanned.load(Relaxed),
-        counters.removed.load(Relaxed),
-        counters.failures.load(Relaxed),
+            let result = match &target {
+                DeletionTarget::Directory(p) => fs::remove_dir_all(p),
+                DeletionTarget::File(p) => fs::remove_file(p),
+            };
+
+            if let Err(e) = result {
+                error!("Failed to remove {}: {}", kind_str, e);
+                (0, 1)
+            } else {
+                info!("Removed {}: {}", kind_str, path.display());
+                (1, 0)
+            }
+        })
+        .reduce(|| (0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+
+    ExecutionResult { removed, failures }
+}
+
+pub fn run(target: &Path, recursive: bool, dry_run: bool, no_ignore: bool) -> Result<()> {
+    let discovery = discover_candidates(target, recursive, no_ignore)?;
+    let scanned_count = discovery.scanned_count;
+    let execution = execute_deletion(filter_targets(discovery), dry_run);
+
+    info!(
+        "Scanned {} entries and removed {} entries.",
+        scanned_count, execution.removed
     );
-    info!("Scanned {s} entries and removed {r} entries.");
-    (f == 0)
-        .then_some(())
-        .ok_or_else(|| anyhow!("Cleanup completed with {f} failures"))
+
+    if execution.failures == 0 {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "Cleanup completed with {} failures",
+            execution.failures
+        ))
+    }
 }
