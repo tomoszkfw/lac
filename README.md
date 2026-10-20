@@ -98,9 +98,9 @@ Additionally, directories whose names start with `_minted` are removed with recu
 - Logs are emitted through the standard Rust logging pipeline. By default, info-level messages and errors are shown; `--verbose` enables debug output.
 - Symbolic links are not followed during traversal.
 - In dry-run mode, paths are printed as `Would remove file: ...` or `Would remove directory: ...` and no deletion happens.
-- Permission or deletion errors are reported to stderr, and processing continues.
+- Traversal and deletion errors are reported to stderr, and processing continues where possible.
 - The command prints a summary: `Scanned X entries and removed Y entries.`
-- If one or more deletions fail, the process exits with an error.
+- If one or more traversal or deletion operations fail, the process exits with an error.
 
 ## Development
 
@@ -111,16 +111,18 @@ cargo run -- --help
 cargo run -- --dry-run .
 ```
 
-### Check and test
+### Checks
 
 ```bash
 cargo fmt
 cargo clippy
 cargo check
-cargo test
 ```
 
-Unit tests cover auxiliary-file suffix and extension matching, as well as the `_minted*` directory-name rule. Filesystem traversal and deletion behavior are not yet covered by integration tests.
+### What test covers
+
+- Unit tests cover auxiliary-file suffix and extension matching, \_minted\* directory-name recognition, dry-run summary behavior, and traversal error handling.
+- End-to-end filesystem traversal and deletion workflows are not yet covered by integration tests.
 
 ## License
 
