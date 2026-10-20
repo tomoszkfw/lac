@@ -99,7 +99,8 @@ Additionally, directories whose names start with `_minted` are removed with recu
 - Symbolic links are not followed during traversal.
 - In dry-run mode, paths are printed as `Would remove file: ...` or `Would remove directory: ...` and no deletion happens.
 - Traversal and deletion errors are reported to stderr, and processing continues where possible.
-- The command prints a summary: `Scanned X entries and removed Y entries.`
+- In dry-run mode, the summary reports planned deletions: `Scanned X entries and would remove Y entries.`
+- In normal mode, the summary reports successful deletions: `Scanned X entries and removed Y entries.`
 - If one or more traversal or deletion operations fail, the process exits with an error.
 
 ## Development
