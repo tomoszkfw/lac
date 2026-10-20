@@ -98,9 +98,9 @@ Additionally, directories whose names start with `_minted` are removed with recu
 - Logs are emitted through the standard Rust logging pipeline. By default, info-level messages and errors are shown; `--verbose` enables debug output.
 - Symbolic links are not followed during traversal.
 - In dry-run mode, paths are printed as `Would remove file: ...` or `Would remove directory: ...` and no deletion happens.
-- Permission or deletion errors are reported to stderr, and processing continues.
+- Traversal and deletion errors are reported to stderr, and processing continues where possible.
 - The command prints a summary: `Scanned X entries and removed Y entries.`
-- If one or more deletions fail, the process exits with an error.
+- If one or more traversal or deletion operations fail, the process exits with an error.
 
 ## Development
 
@@ -120,7 +120,7 @@ cargo check
 cargo test
 ```
 
-Note: there is currently no formal test suite in this repository yet, so `cargo test` may run zero tests.
+`cargo test` runs the unit tests for traversal error handling.
 
 ## License
 

@@ -1,7 +1,7 @@
 use crate::matcher;
 use anyhow::{Result, anyhow};
 use ignore::{WalkBuilder, WalkState};
-use log::{debug, error, info};
+use log::{error, info};
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -57,7 +57,8 @@ fn process_entry(
     let entry = match entry {
         Ok(entry) => entry,
         Err(err) => {
-            debug!("Skipping traversal error: {err}");
+            counters.failures.fetch_add(1, Relaxed);
+            error!("Failed to traverse directory entry: {err}");
             return WalkState::Continue;
         }
     };
@@ -93,5 +94,45 @@ fn process_entry(
         WalkState::Skip
     } else {
         WalkState::Continue
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CleanupCounters, process_entry, run};
+    use ignore::WalkState;
+    use std::io;
+    use std::path::PathBuf;
+    use std::sync::atomic::Ordering::Relaxed;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn traversal_errors_are_counted_as_failures() {
+        let counters = CleanupCounters::default();
+        let err: ignore::Error = io::Error::other("synthetic traversal error").into();
+
+        let state = process_entry(Err(err), false, &counters);
+
+        assert!(matches!(state, WalkState::Continue));
+        assert_eq!(counters.failures.load(Relaxed), 1);
+        assert_eq!(counters.scanned.load(Relaxed), 0);
+        assert_eq!(counters.removed.load(Relaxed), 0);
+    }
+
+    #[test]
+    fn run_returns_an_error_when_traversal_fails() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after UNIX epoch")
+            .as_nanos();
+        let target_path: PathBuf = std::env::temp_dir().join(format!(
+            "lac-nonexistent-traversal-test-{}-{nonce}",
+            std::process::id()
+        ));
+        assert!(!target_path.exists());
+
+        let result = run(&target_path, true, false, false);
+
+        assert!(result.is_err());
     }
 }
