@@ -112,16 +112,18 @@ cargo run -- --help
 cargo run -- --dry-run .
 ```
 
-### Check and test
+### Checks
 
 ```bash
 cargo fmt
 cargo clippy
 cargo check
-cargo test
 ```
 
-`cargo test` runs the unit tests for traversal error handling.
+### What test covers
+
+- Unit tests cover auxiliary-file suffix and extension matching, \_minted\* directory-name recognition, dry-run summary behavior, and traversal error handling.
+- End-to-end filesystem traversal and deletion workflows are not yet covered by integration tests.
 
 ## License
 
