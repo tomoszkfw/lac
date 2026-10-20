@@ -120,7 +120,7 @@ cargo check
 cargo test
 ```
 
-Note: there is currently no formal test suite in this repository yet, so `cargo test` may run zero tests.
+Unit tests cover auxiliary-file suffix and extension matching, as well as the `_minted*` directory-name rule. Filesystem traversal and deletion behavior are not yet covered by integration tests.
 
 ## License
 
