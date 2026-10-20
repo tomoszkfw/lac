@@ -57,7 +57,16 @@ mod tests {
     #[test]
     fn matches_known_filename_suffixes() {
         assert!(is_latex_aux_name("paper.run.xml", None));
-        assert!(is_latex_aux_name("chapter-SAVE-ERROR", None));
+
+        // bibliography-related files
+        assert!(is_latex_aux_name(
+            "chapter.bbl-SAVE-ERROR",
+            Some("bbl-SAVE-ERROR")
+        ));
+        assert!(is_latex_aux_name(
+            "chapter.bcf-SAVE-ERROR",
+            Some("bcf-SAVE-ERROR")
+        ));
     }
 
     #[test]
